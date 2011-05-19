@@ -101,7 +101,7 @@ void DirectVolume::handleVolumeShared() {
 #endif
 
         if (Fat::check(devicePath)) {
-            if (errno == ENODATA) {
+            if ((errno == ENODATA) || (errno == ENOEXEC)) {
                 SLOGW("%s does not contain a FAT filesystem\n", devicePath);
                 continue;
             }
