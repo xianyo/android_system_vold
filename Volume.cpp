@@ -312,7 +312,8 @@ int Volume::mountVol() {
                                          errmsg, false);
         errno = ENODEV;
         return -1;
-    } else if (getState() != Volume::State_Idle) {
+    } else if ((getState() != Volume::State_Idle) && (getState()
+                    != Volume::State_Pending)) {
         errno = EBUSY;
         if (getState() == Volume::State_Pending) {
             mRetryMount = true;
