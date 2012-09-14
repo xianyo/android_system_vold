@@ -595,6 +595,9 @@ int Volume::doUnmount(const char *path, bool force) {
 int Volume::unmountVol(bool force, bool revert) {
     int i, rc;
 
+    const char* externalStorage = getenv("EXTERNAL_STORAGE");
+    bool primaryStorage = externalStorage && !strcmp(getMountpoint(), externalStorage);
+
     if (getState() != Volume::State_Mounted) {
         SLOGE("Volume %s unmount request when not mounted", getLabel());
         errno = EINVAL;
@@ -604,46 +607,48 @@ int Volume::unmountVol(bool force, bool revert) {
     setState(Volume::State_Unmounting);
     usleep(1000 * 1000); // Give the framework some time to react
 
-    /*
-     * First move the mountpoint back to our internal staging point
-     * so nobody else can muck with it while we work.
-     */
-    if (doMoveMount(getMountpoint(), SEC_STGDIR, force)) {
-        SLOGE("Failed to move mount %s => %s (%s)", getMountpoint(), SEC_STGDIR, strerror(errno));
-        setState(Volume::State_Mounted);
-        return -1;
+    //Only primary storage need to hand the SEC_STGDIR/SEC_STG_SECIMGDIR/SEC_ASECDIR
+    if(primaryStorage) {
+         /*
+          * First move the mountpoint back to our internal staging point
+          * so nobody else can muck with it while we work.
+          */
+         if (doMoveMount(getMountpoint(), SEC_STGDIR, force)) {
+             SLOGE("Failed to move mount %s => %s (%s)", getMountpoint(), SEC_STGDIR, strerror(errno));
+             setState(Volume::State_Mounted);
+             return -1;
+         }
+
+         protectFromAutorunStupidity();
+
+         /*
+          * Unmount the tmpfs which was obscuring the asec image directory
+          * from non root users
+          */
+
+         if (doUnmount(Volume::SEC_STG_SECIMGDIR, force)) {
+             SLOGE("Failed to unmount tmpfs on %s (%s)", SEC_STG_SECIMGDIR, strerror(errno));
+             goto fail_republish;
+         }
+
+         /*
+          * Remove the bindmount we were using to keep a reference to
+          * the previously obscured directory.
+          */
+
+         if (doUnmount(Volume::SEC_ASECDIR, force)) {
+             SLOGE("Failed to remove bindmount on %s (%s)", SEC_ASECDIR, strerror(errno));
+             goto fail_remount_tmpfs;
+         }
+
+         /*
+          * Finally, unmount the actual block device from the staging dir
+          */
+         if (doUnmount(Volume::SEC_STGDIR, force)) {
+             SLOGE("Failed to unmount %s (%s)", SEC_STGDIR, strerror(errno));
+             goto fail_recreate_bindmount;
+         }
     }
-
-    protectFromAutorunStupidity();
-
-    /*
-     * Unmount the tmpfs which was obscuring the asec image directory
-     * from non root users
-     */
-
-    if (doUnmount(Volume::SEC_STG_SECIMGDIR, force)) {
-        SLOGE("Failed to unmount tmpfs on %s (%s)", SEC_STG_SECIMGDIR, strerror(errno));
-        goto fail_republish;
-    }
-
-    /*
-     * Remove the bindmount we were using to keep a reference to
-     * the previously obscured directory.
-     */
-
-    if (doUnmount(Volume::SEC_ASECDIR, force)) {
-        SLOGE("Failed to remove bindmount on %s (%s)", SEC_ASECDIR, strerror(errno));
-        goto fail_remount_tmpfs;
-    }
-
-    /*
-     * Finally, unmount the actual block device from the staging dir
-     */
-    if (doUnmount(Volume::SEC_STGDIR, force)) {
-        SLOGE("Failed to unmount %s (%s)", SEC_STGDIR, strerror(errno));
-        goto fail_recreate_bindmount;
-    }
-
     SLOGI("%s unmounted sucessfully", getMountpoint());
 
     /* If this is an encrypted volume, and we've been asked to undo
@@ -664,17 +669,17 @@ int Volume::unmountVol(bool force, bool revert) {
      * Failure handling - try to restore everything back the way it was
      */
 fail_recreate_bindmount:
-    if (mount(SEC_STG_SECIMGDIR, SEC_ASECDIR, "", MS_BIND, NULL)) {
+    if (primaryStorage&&mount(SEC_STG_SECIMGDIR, SEC_ASECDIR, "", MS_BIND, NULL)) {
         SLOGE("Failed to restore bindmount after failure! - Storage will appear offline!");
         goto out_nomedia;
     }
 fail_remount_tmpfs:
-    if (mount("tmpfs", SEC_STG_SECIMGDIR, "tmpfs", MS_RDONLY, "size=0,mode=0,uid=0,gid=0")) {
+    if (primaryStorage&&mount("tmpfs", SEC_STG_SECIMGDIR, "tmpfs", MS_RDONLY, "size=0,mode=0,uid=0,gid=0")) {
         SLOGE("Failed to restore tmpfs after failure! - Storage will appear offline!");
         goto out_nomedia;
     }
 fail_republish:
-    if (doMoveMount(SEC_STGDIR, getMountpoint(), force)) {
+    if (primaryStorage&&doMoveMount(SEC_STGDIR, getMountpoint(), force)) {
         SLOGE("Failed to republish mount after failure! - Storage will appear offline!");
         goto out_nomedia;
     }

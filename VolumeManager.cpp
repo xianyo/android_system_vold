@@ -1157,6 +1157,14 @@ bool VolumeManager::isMountpointMounted(const char *mp)
 }
 
 int VolumeManager::cleanupAsec(Volume *v, bool force) {
+    const char* externalStorage = getenv("EXTERNAL_STORAGE");
+    bool primaryStorage = externalStorage && !strcmp(v->getMountpoint(), externalStorage);
+    //Only primary storage is the mount source of /mnt/secure/asec
+    if(!primaryStorage) {
+        SLOGW("%s not a primary stoarge,no need to clean", v->getMountpoint());
+        return -1;
+    }
+
     while(mActiveContainers->size()) {
         AsecIdCollection::iterator it = mActiveContainers->begin();
         ContainerData* cd = *it;
