@@ -648,6 +648,11 @@ int Volume::unmountVol(bool force, bool revert) {
              SLOGE("Failed to unmount %s (%s)", SEC_STGDIR, strerror(errno));
              goto fail_recreate_bindmount;
          }
+    } else {
+         if (doUnmount(getMountpoint(), force)) {
+             SLOGE("Failed to unmount %s (%s)", getMountpoint(), strerror(errno));
+             return -1;
+         }
     }
     SLOGI("%s unmounted sucessfully", getMountpoint());
 
