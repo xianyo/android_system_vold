@@ -39,6 +39,7 @@ public:
     static const int State_Formatting = 6;
     static const int State_Shared     = 7;
     static const int State_SharedMnt  = 8;
+    static const int MAX_PARTITIONS = 7;
 
     static const char *MEDIA_DIR;
     static const char *FUSE_DIR;
