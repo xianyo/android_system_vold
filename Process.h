@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+ /*
+ * Copyright (C) 2014 Freescale Semiconductor, Inc.
+ */
+
 #ifndef _PROCESS_H
 #define _PROCESS_H
 
@@ -30,6 +34,7 @@ public:
 private:
     static int readSymLink(const char *path, char *link, size_t max);
     static int pathMatchesMountPoint(const char *path, const char *mountPoint);
+	static int getTargetPath(const char *path, char *targetPathBuf, int len);
 };
 
 #endif

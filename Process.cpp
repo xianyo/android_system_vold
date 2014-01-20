@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+/*
+* Copyright (C) 2014 Freescale Semiconductor, Inc.
+*/
+
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
@@ -49,17 +53,66 @@ int Process::readSymLink(const char *path, char *link, size_t max) {
     return 1;
 }
 
+int Process::getTargetPath(const char *path, char *targetPathBuf, int len)
+{
+    int ret = 0;
+    int strLen = 0;
+    char curBuf[PATH_MAX];
+    char nextBuf[PATH_MAX];
+    char *pCurPath = (char *)path;
+    char *pNextPath = nextBuf;
+    char *pTmp = NULL;
+
+    if((path == NULL) || (targetPathBuf == NULL) || (len <= 0))
+        return -1;
+
+    //avoid link loop, try max 8 times
+    for(int i = 0; i < 8; i++) {
+        ret = readlink(pCurPath, pNextPath, PATH_MAX);
+        if(ret < 0)
+            break;
+
+        //add '\0' char
+        strLen = (ret < PATH_MAX) ? ret : PATH_MAX - 1;
+        pNextPath[strLen] = 0;
+
+        if(i == 0) {
+           pCurPath = nextBuf;
+           pNextPath = curBuf;
+        }else {
+           pTmp = pNextPath;
+           pNextPath = pCurPath;
+           pCurPath = pTmp;
+        }
+    }
+
+    strncpy(targetPathBuf,  pCurPath, len);
+    targetPathBuf[len - 1] = 0;
+
+    return 0;
+}
+
+
 int Process::pathMatchesMountPoint(const char* path, const char* mountPoint) {
-    int length = strlen(mountPoint);
-    if (length > 1 && strncmp(path, mountPoint, length) == 0) {
+    char targetMountPoint[PATH_MAX];
+    int ret;
+
+    //"/storage/extsd" is soft link to "/mnt/media_rw/extsd", so need get the final path
+    ret = getTargetPath(mountPoint, targetMountPoint, PATH_MAX);
+    if(ret != 0) {
+        return 0;
+    }
+
+    int length = strlen(targetMountPoint);
+    if (length > 1 && strncmp(path, targetMountPoint, length) == 0) {
         // we need to do extra checking if mountPoint does not end in a '/'
-        if (mountPoint[length - 1] == '/')
+        if (targetMountPoint[length - 1] == '/')
             return 1;
         // if mountPoint does not have a trailing slash, we need to make sure
         // there is one in the path to avoid partial matches.
         return (path[length] == 0 || path[length] == '/');
     }
-    
+
     return 0;
 }
 
